@@ -16,7 +16,7 @@ export function useJarvis() {
   const [userName, setUserName] = useState('Estudiante');
   const [level, setLevel] = useState('Beginner');
 
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder(RecordingPresets.LOW_QUALITY); // Audio más ligero para subida instantánea
   const isProcessingRef = useRef(false);
   const voicesRef = useRef<{en: string | null, es: string | null}>({ en: null, es: null });
   const statusRef = useRef<JarvisStatus>('idle');
@@ -60,7 +60,7 @@ export function useJarvis() {
             console.log('Silencio detectado, enviando...');
             stopRecordingAndProcess();
             silenceTimerRef.current = null;
-          }, 1000); // Reducido de 1500ms a 1000ms
+          }, 700); // Reducido a 700ms para respuesta inmediata
         }
       } else {
         // Si el usuario vuelve a hablar, cancelamos el temporizador
