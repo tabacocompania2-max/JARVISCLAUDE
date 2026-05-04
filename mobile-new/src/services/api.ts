@@ -31,15 +31,38 @@ export async function sendMessage(
   return data.response;
 }
 
-export async function transcribeAudioFile(audioUri: string): Promise<string> {
-  const res = await FileSystem.uploadAsync(`${API_BASE_URL}/api/transcribe`, audioUri, {
+// ✅ NUEVA interface con confianza y detección de voz
+export interface TranscriptionResponse {
+  text: string;
+  confidence: number;
+  hasVoice: boolean; // ← CLAVE: true = voz humana detectada
+  timestamp: string;
+}
+
+export async function transcribeAudioFileWithVAD(audioUri: string): Promise<TranscriptionResponse> {
+  const uploadResult = await FileSystem.uploadAsync(`${API_BASE_URL}/api/transcribe`, audioUri, {
     httpMethod: 'POST',
-    uploadType: 1, // 1 es MULTIPART en Expo FileSystem
+    uploadType: 1, // MULTIPART
     fieldName: 'audio',
     mimeType: 'audio/m4a',
   });
 
-  if (res.status !== 200) throw new Error(`Transcription failed: ${res.status}`);
-  const data = JSON.parse(res.body);
-  return data.text ?? '';
+  if (uploadResult.status !== 200) {
+    throw new Error(`Transcription failed: ${uploadResult.status}`);
+  }
+
+  const data = JSON.parse(uploadResult.body);
+
+  return {
+    text: data.text ?? '',
+    confidence: data.confidence ?? 0,
+    hasVoice: data.hasVoice ?? false, // ← Si false = ruido, ignorar
+    timestamp: new Date().toISOString(),
+  };
+}
+
+// ✅ MANTENER función antigua para compatibilidad
+export async function transcribeAudioFile(audioUri: string): Promise<string> {
+  const result = await transcribeAudioFileWithVAD(audioUri);
+  return result.text;
 }

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
-import { chatWithJarvis, transcribeAudio, Message } from '../services/groq';
+import { chatWithJarvis, transcribeAudioWithConfidence, Message } from '../services/groq';
 import { buildSystemPrompt } from '../prompts/system';
 
 const router = Router();
@@ -49,8 +49,18 @@ router.post('/transcribe', upload.single('audio'), async (req: Request, res: Res
   try {
     if (!req.file) return res.status(400).json({ error: 'audio file required' });
 
-    const text = await transcribeAudio(req.file.buffer, req.file.originalname || 'audio.m4a');
-    return res.json({ text });
+    // ✅ USAR NUEVA FUNCIÓN CON CONFIDENCE
+    const result = await transcribeAudioWithConfidence(
+      req.file.buffer,
+      req.file.originalname || 'audio.m4a'
+    );
+
+    // ✅ RESPUESTA INCLUYE si es voz humana o no
+    return res.json({
+      text: result.text,
+      confidence: result.confidence,
+      hasVoice: result.hasVoice, // ← CLAVE: cliente sabe si fue voz o ruido
+    });
   } catch (err: any) {
     console.error('[TRANSCRIBE ERROR]', err.message);
     return res.status(500).json({ error: 'Transcription failed', details: err.message });

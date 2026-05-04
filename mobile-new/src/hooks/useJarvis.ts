@@ -3,7 +3,7 @@ import { Linking } from 'react-native';
 import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
-import { sendMessage, transcribeAudioFile, Message } from '../services/api';
+import { sendMessage, transcribeAudioFile, transcribeAudioFileWithVAD, Message } from '../services/api';
 import { getUserSettings } from '../services/storage';
 
 export type JarvisStatus = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
@@ -158,22 +158,20 @@ export function useJarvis() {
         return;
       }
 
-      // 3. VALIDACIÓN POR IA (Neuronal VAD)
-      const userText = await transcribeAudioFile(uri);
+      // 3. VALIDACIÓN POR IA (Neuronal VAD avanzada)
+      const result = await transcribeAudioFileWithVAD(uri);
       
-      // Filtramos ruidos y alucinaciones de Whisper
-      const noisePhrases = ['gracias por ver', 'subtítulos', 'revisado por', 'thank you for watching'];
-      const isActuallySpeech = userText.trim().length > 1 && 
-                               !noisePhrases.some(p => userText.toLowerCase().includes(p));
-
-      if (isActuallySpeech) {
-        console.log(`[STT] "${userText}"`);
-        setTranscript(userText);
-        await processMessage(userText);
-      } else {
-        console.log('[VAD] Audio descartado por ser ruido de fondo');
+      if (!result.hasVoice) {
+        console.log(`[VAD] Ruido detectado (Confianza: ${(result.confidence * 100).toFixed(0)}%). Ignorando.`);
         setStatus('listening');
+        return;
       }
+
+      const userText = result.text;
+      console.log(`[STT] "${userText}" | Confianza: ${(result.confidence * 100).toFixed(0)}%`);
+      
+      setTranscript(userText);
+      await processMessage(userText);
     } catch (err) {
       console.error('[STT ERROR]', err);
       setStatus('listening');

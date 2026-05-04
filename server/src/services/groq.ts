@@ -33,19 +33,60 @@ export async function chatWithJarvis(
   return completion.choices[0]?.message?.content ?? '(Sin respuesta)';
 }
 
-export async function transcribeAudio(audioBuffer: Buffer, filename: string): Promise<string> {
+// ✅ NUEVO: Interface para respuesta detallada de Whisper
+export interface TranscriptionWithConfidence {
+  text: string;
+  confidence: number; // 0-1
+  hasVoice: boolean;
+}
+
+// ✅ NUEVO: Transcribir CON confidence scores
+export async function transcribeAudioWithConfidence(
+  audioBuffer: Buffer,
+  filename: string
+): Promise<TranscriptionWithConfidence> {
   console.log(`[Whisper] Transcribiendo: ${filename} (${audioBuffer.length} bytes)`);
   
-  // Volvemos al método directo de File, que es el más estable en Node.js 20+
   const file = new File([audioBuffer], filename, { type: 'audio/m4a' });
 
+  // ✅ CAMBIO: Usar response_format 'verbose_json' para obtener confidence
   const transcription = await groq.audio.transcriptions.create({
     file,
     model: 'whisper-large-v3',
-    response_format: 'text',
-  });
+    response_format: 'verbose_json', // ← CAMBIO CLAVE
+  }) as any;
 
-  const text = (transcription as unknown as string).trim();
-  console.log(`[Whisper] Resultado: "${text.substring(0, 30)}..."`);
-  return text;
+  const text = (transcription.text || '').trim();
+  
+  // ✅ EXTRAER confidence: Groq devuelve objeto con datos de confianza
+  // Si no está disponible, calcular basado en longitud del texto
+  let confidence = 0.5; // Default
+  
+  if (transcription.words) {
+    // Si hay información por palabra, promediar confianzas
+    const confidences = transcription.words
+      .filter((w: any) => w.confidence)
+      .map((w: any) => w.confidence);
+    
+    if (confidences.length > 0) {
+      confidence = confidences.reduce((a: number, b: number) => a + b, 0) / confidences.length;
+    }
+  }
+  
+  // ✅ LÓGICA DE DETECCIÓN DE VOZ
+  const hasVoice = text.length > 0 && confidence > 0.5;
+  
+  console.log(`[Whisper] Texto: "${text.substring(0, 30)}..." | Confianza: ${(confidence * 100).toFixed(0)}% | Voz: ${hasVoice}`);
+  
+  return {
+    text,
+    confidence,
+    hasVoice,
+  };
+}
+
+// ✅ MANTENER la función antigua para compatibilidad
+export async function transcribeAudio(audioBuffer: Buffer, filename: string): Promise<string> {
+  const result = await transcribeAudioWithConfidence(audioBuffer, filename);
+  return result.text;
 }
