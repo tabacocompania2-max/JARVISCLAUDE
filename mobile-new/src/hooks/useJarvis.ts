@@ -204,6 +204,10 @@ export function useJarvis() {
         return;
       }
 
+      // Detectar comandos de YouTube
+      const youtubeMatch = response.match(/\[YOUTUBE:([^\]]+)\]/);
+      const youtubeUrlMatch = response.match(/\[YOUTUBE_URL:([^\]]+)\]/);
+      
       const cleanResponse = response
         .replace(/\[YOUTUBE:[^\]]+\]/g, '')
         .replace(/\[YOUTUBE_URL:[^\]]+\]/g, '')
@@ -211,6 +215,16 @@ export function useJarvis() {
 
       setJarvisText(cleanResponse);
       
+      // Si tenemos URL directa (del servidor), la abrimos
+      if (youtubeUrlMatch) {
+        console.log('[YouTube] Abriendo video directo:', youtubeUrlMatch[1]);
+        Linking.openURL(youtubeUrlMatch[1]);
+      } else if (youtubeMatch) {
+        // Backup: Búsqueda normal
+        const query = encodeURIComponent(youtubeMatch[1] + ' lyrics');
+        Linking.openURL(`https://www.youtube.com/results?search_query=${query}`);
+      }
+
       const fullHistory: Message[] = [
         ...newHistory,
         { role: 'assistant', content: response, timestamp: new Date().toISOString() },
