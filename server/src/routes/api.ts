@@ -18,7 +18,7 @@ router.post('/chat', async (req: Request, res: Response) => {
     const systemPrompt = buildSystemPrompt(userName, level);
     
     // FILTRO ANTI-ECO: Si el usuario dice exactamente lo mismo que Jarvis acaba de decir, ignoramos.
-    const lastAssistantMessage = history.filter(m => m.role === 'assistant').pop()?.content || '';
+    const lastAssistantMessage = (history as Message[]).filter((m: Message) => m.role === 'assistant').pop()?.content || '';
     if (message.toLowerCase().trim() === lastAssistantMessage.toLowerCase().trim()) {
       console.log('[Anti-Echo] Ignorando mensaje repetido de Jarvis');
       return res.json({ response: '', timestamp: new Date().toISOString() });
