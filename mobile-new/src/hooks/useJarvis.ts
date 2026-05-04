@@ -49,6 +49,26 @@ export function useJarvis() {
     });
   }, []);
 
+  // Lógica Hands-Free: Auto-detener tras 1.5s de silencio
+  useEffect(() => {
+    let silenceTimer: NodeJS.Timeout;
+
+    if (status === 'listening' && recorder.isRecording) {
+      // El valor de metering suele ser de -160 (silencio) a 0 (máximo)
+      // Ajustamos el umbral a -45 para detectar silencio ambiental
+      if (recorder.metering < -45) {
+        silenceTimer = setTimeout(() => {
+          console.log('Silencio detectado, procesando automáticamente...');
+          stopRecordingAndProcess();
+        }, 1500);
+      }
+    }
+
+    return () => {
+      if (silenceTimer) clearTimeout(silenceTimer);
+    };
+  }, [recorder.metering, recorder.isRecording, status]);
+
   const requestPermissions = async (): Promise<boolean> => {
     // Usamos expo-av para permisos por estabilidad en Expo Go
     const { status: audioStatus } = await Audio.requestPermissionsAsync();
@@ -94,10 +114,10 @@ export function useJarvis() {
       isProcessingRef.current = true;
       setStatus('thinking');
 
-      const result = await recorder.stop();
-      const uri = result.uri;
+      await recorder.stop();
+      const uri = recorder.uri; // Obtenemos la URI directamente del recorder
 
-      if (!uri) throw new Error('No audio file');
+      if (!uri) throw new Error('No se generó el archivo de audio');
 
       // Reset audio mode for playback
       await AudioModule.setAudioModeAsync({ allowsRecordingIOS: false });
