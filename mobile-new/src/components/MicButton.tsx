@@ -36,7 +36,7 @@ export function MicButton({ isListening, isThinking, onPress }: Props) {
   }, [isListening]);
 
   const bgColor = isListening ? '#ff3b3b' : isThinking ? '#f5a623' : '#00d4ff';
-  const label = isListening ? 'Toca para enviar' : isThinking ? '...' : 'Mantén para hablar';
+  const label = isListening ? 'STOP' : isThinking ? 'PROCESANDO...' : 'TOCA PARA HABLAR';
 
   return (
     <View style={styles.wrapper}>
@@ -53,7 +53,7 @@ export function MicButton({ isListening, isThinking, onPress }: Props) {
           {isThinking ? (
             <ThinkingDots />
           ) : isListening ? (
-            <SendIcon />
+            <StopIcon />
           ) : (
             <MicIcon />
           )}
@@ -62,6 +62,12 @@ export function MicButton({ isListening, isThinking, onPress }: Props) {
 
       <Text style={[styles.label, { color: bgColor }]}>{label}</Text>
     </View>
+  );
+}
+
+function StopIcon() {
+  return (
+    <View style={{ width: 24, height: 24, backgroundColor: '#050A14', borderRadius: 4 }} />
   );
 }
 

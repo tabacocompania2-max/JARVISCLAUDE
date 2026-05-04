@@ -17,7 +17,10 @@ export function useJarvis() {
   const [userName, setUserName] = useState('Estudiante');
   const [level, setLevel] = useState('Beginner');
 
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY); // m4a es compatible con Groq
+  const recorder = useAudioRecorder({
+    ...RecordingPresets.HIGH_QUALITY,
+    meteringEnabled: true,
+  });
   const isProcessingRef = useRef(false);
   const voicesRef = useRef<{en: string | null, es: string | null}>({ en: null, es: null });
   const statusRef = useRef<JarvisStatus>('idle');
@@ -51,30 +54,26 @@ export function useJarvis() {
     });
   }, []);
 
-  // Lógica Hands-Free: Auto-detener tras 1.5s de silencio real
+  // Lógica Hands-Free: Auto-detener tras 1.0s de silencio real
   useEffect(() => {
-    if (status === 'listening' && recorder.isRecording) {
-      if (recorder.metering < -45) {
-        // Si no hay temporizador activo, lo iniciamos
-        if (!silenceTimerRef.current) {
-          silenceTimerRef.current = setTimeout(() => {
-            console.log('Silencio detectado, enviando...');
-            stopRecordingAndProcess();
-            silenceTimerRef.current = null;
-          }, 700); // Reducido a 700ms para respuesta inmediata
-        }
-      } else {
-        // Si el usuario vuelve a hablar, cancelamos el temporizador
-        if (silenceTimerRef.current) {
-          clearTimeout(silenceTimerRef.current);
-          silenceTimerRef.current = null;
-        }
-      }
-    } else {
-      // Limpiar si cambia de estado
+    if (!recorder.isRecording) return;
+
+    const volume = recorder?.metering ?? -100;
+    
+    // Umbral ligeramente más alto para ignorar ruido de fondo leve
+    if (volume > -42) { 
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
+      }
+    } else {
+      // Silencio: esperar 1 segundo antes de enviar
+      if (!silenceTimerRef.current) {
+        silenceTimerRef.current = setTimeout(() => {
+          console.log('[Hands-Free] Silencio estable, procesando...');
+          stopRecordingAndProcess();
+          silenceTimerRef.current = null;
+        }, 1000);
       }
     }
 
@@ -84,10 +83,9 @@ export function useJarvis() {
         silenceTimerRef.current = null;
       }
     };
-  }, [recorder.metering, recorder.isRecording, status, stopRecordingAndProcess]);
+  }, [recorder.metering, recorder.isRecording, stopRecordingAndProcess]);
 
   const requestPermissions = async (): Promise<boolean> => {
-    // Usamos expo-av para permisos por estabilidad en Expo Go
     const { status: audioStatus } = await Audio.requestPermissionsAsync();
     return audioStatus === 'granted';
   };
@@ -97,14 +95,12 @@ export function useJarvis() {
       setError(null);
       const hasPermission = await requestPermissions();
       if (!hasPermission) {
-        setError('Necesito permiso para usar el micrófono');
+        setError('Permiso de micrófono denegado');
         return;
       }
 
-      // Cancel any speaking
-      await Speech.stop();
+      await Speech.stop(); // Callamos a Jarvis si estaba hablando
 
-      // Configure audio mode for recording
       await AudioModule.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -115,42 +111,41 @@ export function useJarvis() {
       await recorder.prepareToRecordAsync();
       setJarvisText('Te escucho...');
       setStatus('listening');
-      
-      // Si Jarvis estaba hablando, lo callamos para escucharte
-      Speech.stop();
       await recorder.record();
       
       setTranscript('');
     } catch (err: any) {
       console.error('Start recording error:', err);
-      setError('Error al iniciar grabación');
+      setError('Error al iniciar micro');
       setStatus('error');
     }
   }, [recorder]);
 
   const stopRecordingAndProcess = useCallback(async () => {
-    if (!recorder.isRecording || isProcessingRef.current) return;
+    if (!recorder.isRecording || isProcessingRef.current) {
+      console.log('[Hands-Free] Ignorando trigger (ya procesando o no grabando)');
+      return;
+    }
 
     try {
       isProcessingRef.current = true;
       setStatus('thinking');
 
       await recorder.stop();
-      const uri = recorder.uri; // Obtenemos la URI directamente del recorder
+      const uri = recorder.uri;
 
-      if (!uri) throw new Error('No se generó el archivo de audio');
+      if (!uri) throw new Error('Audio no capturado');
 
-      // REINICIO INMEDIATO: No esperamos a la respuesta, volvemos a escuchar ya mismo
+      // Reiniciamos el micro casi de inmediato para no perder el siguiente fragmento
       setTimeout(() => {
-        if (statusRef.current !== 'error') {
-          startRecording();
-        }
-      }, 300);
+        if (statusRef.current !== 'error') startRecording();
+      }, 400);
 
-      // Step 1: Transcribe
       const userText = await transcribeAudioFile(uri);
       if (!userText.trim()) {
+        console.log('[Audio] Sin contenido audible');
         isProcessingRef.current = false;
+        setStatus('listening');
         return;
       }
       setTranscript(userText);
