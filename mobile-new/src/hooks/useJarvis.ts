@@ -183,6 +183,12 @@ export function useJarvis() {
 
     try {
       const response = await sendMessage(userText, newHistory, userName, level);
+      
+      // Si la respuesta es vacía (filtro anti-eco), no hacemos nada
+      if (!response.trim()) {
+        console.log('[Anti-Echo] Respuesta filtrada por el servidor');
+        return;
+      }
 
       // Strip [YOUTUBE:...] or [YOUTUBE_URL:...] tags
       const youtubeMatch = response.match(/\[YOUTUBE:([^\]]+)\]/);
