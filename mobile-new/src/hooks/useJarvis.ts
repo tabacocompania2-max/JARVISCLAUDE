@@ -140,13 +140,16 @@ export function useJarvis() {
 
       if (!uri) throw new Error('No se generó el archivo de audio');
 
-      // Reset audio mode for playback
-      await AudioModule.setAudioModeAsync({ allowsRecordingIOS: false });
+      // REINICIO INMEDIATO: No esperamos a la respuesta, volvemos a escuchar ya mismo
+      setTimeout(() => {
+        if (statusRef.current !== 'error') {
+          startRecording();
+        }
+      }, 300);
 
       // Step 1: Transcribe
       const userText = await transcribeAudioFile(uri);
       if (!userText.trim()) {
-        setStatus('idle');
         isProcessingRef.current = false;
         return;
       }
@@ -224,16 +227,15 @@ export function useJarvis() {
     console.log('[Speech] Preparando audio para hablar...');
     
     try {
-      // Forzamos el modo de audio a reproducción pura antes de hablar
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
+      // Mantenemos el micrófono abierto incluso mientras hablamos para permitir interrupciones
+      await AudioModule.setAudioModeAsync({
+        allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-        staysActiveInBackground: false,
+        interruptionModeIOS: 'doNotMix',
+        shouldRouteThroughEarpieceAndroid: false,
       });
     } catch (err) {
-      console.warn('[Speech] No se pudo resetear el modo de audio:', err);
+      console.warn('[Speech] No se pudo configurar modo dual:', err);
     }
 
     console.log('[Speech] Intentando hablar:', text.substring(0, 30) + '...');
@@ -264,12 +266,6 @@ export function useJarvis() {
           onDone: () => {
             console.log('[Speech] Oración terminada');
             resolve();
-            // AUTO-REINICIO: Si estamos en modo manos libres, volvemos a escuchar
-            setTimeout(() => {
-              if (statusRef.current === 'idle' || statusRef.current === 'speaking') {
-                startRecording();
-              }
-            }, 500); // 500ms de gracia entre turnos
           },
           onError: (e) => {
             console.error('[Speech] Error al hablar:', e);
