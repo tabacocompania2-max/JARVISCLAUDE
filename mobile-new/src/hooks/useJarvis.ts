@@ -52,44 +52,32 @@ export function useJarvis() {
       };
       console.log('Selected voices:', voicesRef.current);
     });
-  }, []);
+  }, []  // --- MOTOR DE VOZ INTELIGENTE (AI-POWERED VAD) ---
+  const chunksRef = useRef<string[]>([]);
+  const consecutiveEmptyRef = useRef(0);
 
-  // --- MOTOR DE VOZ AVANZADO (VAD & BARGE-IN) ---
   useEffect(() => {
     if (!recorder.isRecording) return;
+
     const volume = recorder?.metering ?? -100;
     const isJarvisSpeaking = statusRef.current === 'speaking';
 
-    // DEBUG VOLUMEN: Descomenta esto si necesitas calibrar el micro en vivo
-    // console.log(`[VOL] ${volume.toFixed(1)} dB | Status: ${statusRef.current}`);
-
-    // 1. LÓGICA DE BARGE-IN (Interrupción)
-    // Subimos el umbral de interrupción para que no sea tan sensible al eco
-    if (isJarvisSpeaking && volume > -25) {
-      console.log('[BARGE-IN] Voz fuerte detectada durante TTS. Interrumpiendo...');
+    // Barge-in (Interrupción) sigue siendo por volumen para respuesta instantánea
+    if (isJarvisSpeaking && volume > -22) {
+      console.log('[BARGE-IN] Interrupción detectada');
       Speech.stop();
       setStatus('listening');
     }
 
-    // 2. LÓGICA VAD (Detección de Actividad de Voz)
-    // Si el volumen es mayor a -35dB, consideramos que hay voz humana
-    if (volume > -35) {
-      if (silenceTimerRef.current) {
-        // console.log('[VAD] Voz detectada, reiniciando espera...');
-        clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = null;
-      }
-    } else {
-      // SILENCIO: Si estamos en modo escucha y no hay voz, iniciamos cuenta regresiva
-      if (recorder.isRecording && !isJarvisSpeaking && statusRef.current === 'listening') {
-        if (!silenceTimerRef.current) {
-          console.log('[VAD] Silencio detectado... esperando confirmación');
-          silenceTimerRef.current = setTimeout(() => {
-            console.log('[VAD] Silencio confirmado, procesando audio');
-            stopRecordingAndProcess();
-            silenceTimerRef.current = null;
-          }, 1000); // 1 segundo de silencio es suficiente
-        }
+    // Ya no usamos un timer de silencio basado en dB para enviar.
+    // En su lugar, usamos un "Heartbeat" de 2.5 segundos para enviar audio a la IA
+    // y que ella decida si hay voz o no.
+    if (recorder.isRecording && !isJarvisSpeaking && statusRef.current === 'listening') {
+      if (!silenceTimerRef.current) {
+        silenceTimerRef.current = setTimeout(() => {
+          stopRecordingAndProcess();
+          silenceTimerRef.current = null;
+        }, 2500); // Pulso de 2.5s
       }
     }
 
@@ -108,19 +96,17 @@ export function useJarvis() {
 
   const startRecording = useCallback(async () => {
     try {
-      console.log('[MIC] Abriendo canal continuo...');
       setError(null);
       const hasPermission = await requestPermissions();
       if (!hasPermission) {
-        setError('Permiso de micrófono denegado');
+        setError('Permiso denegado');
         return;
       }
 
-      // Configuración de Audio para FULL DUPLEX y AEC (Acoustic Echo Cancellation)
       await AudioModule.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
-        interruptionModeIOS: 'doNotMix', // Evita que el sistema pause el micro al sonar TTS
+        interruptionModeIOS: 'doNotMix',
         shouldRouteThroughEarpieceAndroid: false,
       });
 
@@ -128,56 +114,66 @@ export function useJarvis() {
       await recorder.record();
       
       setStatus('listening');
-      setTranscript('');
-      console.log('[VAD] Modo escucha activa (Hands-free)');
     } catch (err: any) {
       console.error('[MIC ERROR]', err);
-      setError('Error en motor de audio');
       setStatus('error');
     }
   }, [recorder]);
 
   const stopRecordingAndProcess = useCallback(async () => {
-    // Si ya estamos procesando un chunk, ignoramos triggers nuevos para evitar colisiones
     if (isProcessingRef.current) return;
 
     try {
       isProcessingRef.current = true;
-      console.log('[STT] Enviando chunk a Groq...');
-
       await recorder.stop();
       const uri = recorder.uri;
 
-      // REINICIO ULTRA-RÁPIDO (Casi continuo)
-      // Reiniciamos antes de procesar el texto para no perder lo que el usuario diga después
+      // Reinicio inmediato del micro (Canal Continuo)
       setTimeout(() => {
         if (statusRef.current !== 'error') startRecording();
-      }, 100);
+      }, 50);
 
       if (!uri) {
         isProcessingRef.current = false;
         return;
       }
 
+      // Dejamos que la IA (Whisper) decida si esto es voz o ruido
       const userText = await transcribeAudioFile(uri);
-      console.log(`[STT] Recibido: "${userText}"`);
-
-      if (!userText.trim()) {
-        isProcessingRef.current = false;
-        // El micro ya se reinició arriba
-        return;
-      }
-
-      setTranscript(userText);
-      await processMessage(userText);
       
+      if (userText.trim().length > 1) {
+        console.log(`[AI-VAD] Voz detectada: "${userText}"`);
+        consecutiveEmptyRef.current = 0;
+        chunksRef.current.push(userText);
+        setTranscript(chunksRef.current.join(' '));
+        
+        // Si la frase parece completa (punto final) o es larga, procesamos con el chat
+        if (userText.includes('.') || userText.includes('?') || userText.length > 50) {
+          const fullMessage = chunksRef.current.join(' ');
+          chunksRef.current = [];
+          await processMessage(fullMessage);
+        }
+      } else {
+        // La IA dice que es ruido o silencio
+        consecutiveEmptyRef.current++;
+        console.log(`[AI-VAD] Ruido ignorado (${consecutiveEmptyRef.current})`);
+        
+        // Si llevamos 2 pulsos vacíos y hay algo en el buffer, el usuario terminó de hablar
+        if (consecutiveEmptyRef.current >= 2 && chunksRef.current.length > 0) {
+          const fullMessage = chunksRef.current.join(' ');
+          chunksRef.current = [];
+          await processMessage(fullMessage);
+        }
+      }
     } catch (err: any) {
-      console.error('[PROCESS ERROR]', err);
-      isProcessingRef.current = false;
+      console.error('[STT ERROR]', err);
     } finally {
       isProcessingRef.current = false;
     }
   }, [recorder, history, userName, level, processMessage, startRecording]);
+
+
+
 
   const processMessage = useCallback(async (userText: string) => {
     setStatus('thinking');
