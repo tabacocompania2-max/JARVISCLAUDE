@@ -184,9 +184,13 @@ export function useJarvis() {
 
       setJarvisText(cleanResponse + (youtubeMatch ? `\n\n🎬 YouTube: "${youtubeMatch[1]}"` : ''));
 
+      // Si hay una intención de YouTube, la abrimos con un pequeño retraso
+      // para que Jarvis pueda decir "Claro Carlos, ya te lo pongo..."
       if (youtubeMatch) {
-        const query = encodeURIComponent(youtubeMatch[1]);
-        Linking.openURL(`https://www.youtube.com/results?search_query=${query}`);
+        setTimeout(() => {
+          const query = encodeURIComponent(youtubeMatch[1] + ' lyrics');
+          Linking.openURL(`https://www.youtube.com/results?search_query=${query}`);
+        }, 3000); // 3 segundos de espera
       }
 
       const fullHistory: Message[] = [
