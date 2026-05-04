@@ -16,7 +16,7 @@ export function useJarvis() {
   const [userName, setUserName] = useState('Estudiante');
   const [level, setLevel] = useState('Beginner');
 
-  const recorder = useAudioRecorder(RecordingPresets.LOW_QUALITY); // Audio más ligero para subida instantánea
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY); // m4a es compatible con Groq
   const isProcessingRef = useRef(false);
   const voicesRef = useRef<{en: string | null, es: string | null}>({ en: null, es: null });
   const statusRef = useRef<JarvisStatus>('idle');
