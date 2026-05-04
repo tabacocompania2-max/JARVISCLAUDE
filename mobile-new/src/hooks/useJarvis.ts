@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useAudioRecorder, AudioModule, RecordingOptionsPresets } from 'expo-audio';
+import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import { sendMessage, transcribeAudioFile, Message } from '../services/api';
 import { getUserSettings } from '../services/storage';
@@ -15,7 +15,7 @@ export function useJarvis() {
   const [userName, setUserName] = useState('Estudiante');
   const [level, setLevel] = useState('Beginner');
 
-  const recorder = useAudioRecorder(RecordingOptionsPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const isProcessingRef = useRef(false);
 
   // Load user settings on mount
