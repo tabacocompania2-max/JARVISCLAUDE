@@ -34,16 +34,14 @@ export async function chatWithJarvis(
 }
 
 export async function transcribeAudio(audioBuffer: Buffer, filename: string): Promise<string> {
-  console.log(`[Whisper] Iniciando transcripción de: ${filename} (${audioBuffer.length} bytes)`);
+  console.log(`[Whisper] Transcribiendo: ${filename} (${audioBuffer.length} bytes)`);
   
-  // Usamos un Blob para mayor compatibilidad en entornos de servidor
-  const blob = new Blob([audioBuffer], { type: 'audio/m4a' });
-  const file = new File([blob], filename, { type: 'audio/m4a' });
+  // Volvemos al método directo de File, que es el más estable en Node.js 20+
+  const file = new File([audioBuffer], filename, { type: 'audio/m4a' });
 
   const transcription = await groq.audio.transcriptions.create({
     file,
     model: 'whisper-large-v3',
-    // Eliminamos language: 'es' para que detecte automáticamente (más rápido y flexible)
     response_format: 'text',
   });
 
