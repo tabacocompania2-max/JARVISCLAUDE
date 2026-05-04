@@ -34,14 +34,20 @@ export async function chatWithJarvis(
 }
 
 export async function transcribeAudio(audioBuffer: Buffer, filename: string): Promise<string> {
-  const file = new File([audioBuffer], filename, { type: 'audio/m4a' });
+  console.log(`[Whisper] Iniciando transcripción de: ${filename} (${audioBuffer.length} bytes)`);
+  
+  // Usamos un Blob para mayor compatibilidad en entornos de servidor
+  const blob = new Blob([audioBuffer], { type: 'audio/m4a' });
+  const file = new File([blob], filename, { type: 'audio/m4a' });
 
   const transcription = await groq.audio.transcriptions.create({
     file,
     model: 'whisper-large-v3',
-    language: 'es',
+    // Eliminamos language: 'es' para que detecte automáticamente (más rápido y flexible)
     response_format: 'text',
   });
 
-  return (transcription as unknown as string).trim();
+  const text = (transcription as unknown as string).trim();
+  console.log(`[Whisper] Resultado: "${text.substring(0, 30)}..."`);
+  return text;
 }
