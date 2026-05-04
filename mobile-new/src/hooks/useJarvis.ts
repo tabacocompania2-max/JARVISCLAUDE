@@ -242,6 +242,7 @@ export function useJarvis() {
   const speakResponse = async (text: string) => {
     console.log('[TTS] Iniciando reproducción...');
     setStatus('speaking');
+    statusRef.current = 'speaking'; // Forzamos actualización inmediata para evitar race conditions
     
     // Mantenemos el micrófono abierto incluso mientras hablamos para permitir interrupciones
     try {
@@ -259,8 +260,9 @@ export function useJarvis() {
     const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
     
     for (const sentence of sentences) {
+      // Si el usuario interrumpió, salimos del bucle de voz
       if (statusRef.current !== 'speaking') {
-        console.log('[Speech] Interrumpido: el estado ya no es speaking');
+        console.log('[Speech] Interrumpido por el usuario');
         break; 
       }
       
@@ -268,27 +270,28 @@ export function useJarvis() {
       const voice = isEnglish ? voicesRef.current.en : voicesRef.current.es;
       const lang = isEnglish ? 'en-US' : 'es-ES';
 
-      console.log(`[Speech] Hablando oración: "${sentence.substring(0, 20)}..." en ${lang}`);
+      console.log(`[Speech] Hablando: "${sentence.substring(0, 20)}..."`);
 
       await new Promise<void>((resolve) => {
         Speech.speak(sentence, {
           language: lang,
           voice: voice || undefined,
           pitch: 1.0,
-          rate: 1.25, // Voz mucho más rápida y dinámica
-          onDone: () => {
-            console.log('[Speech] Oración terminada');
-            resolve();
-          },
+          rate: 1.25,
+          onDone: () => resolve(),
           onError: (e) => {
-            console.error('[Speech] Error al hablar:', e);
+            console.error('[Speech] Error:', e);
             resolve();
           },
         });
       });
     }
     
-    setStatus('idle');
+    // Al terminar de hablar, volvemos a ESCUCHAR automáticamente para modo manos libres
+    if (statusRef.current === 'speaking') {
+      console.log('[TTS] Fin de respuesta, volviendo a modo escucha...');
+      setStatus('listening');
+    }
   };
 
   const sendTextMessage = useCallback(async (text: string) => {
