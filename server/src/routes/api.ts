@@ -16,7 +16,18 @@ router.post('/chat', async (req: Request, res: Response) => {
     }
 
     const systemPrompt = buildSystemPrompt(userName, level);
-    const response = await chatWithJarvis(message, history as Message[], systemPrompt);
+    let response = await chatWithJarvis(message, history as Message[], systemPrompt);
+
+    // Si la IA generó una etiqueta de YouTube, buscamos el video real
+    const youtubeMatch = response.match(/\[YOUTUBE:([^\]]+)\]/);
+    if (youtubeMatch) {
+      const { getFirstYoutubeVideo } = require('../services/youtube');
+      const videoUrl = await getFirstYoutubeVideo(youtubeMatch[1]);
+      if (videoUrl) {
+        // Reemplazamos la búsqueda por la URL real
+        response = response.replace(youtubeMatch[0], `[YOUTUBE_URL:${videoUrl}]`);
+      }
+    }
 
     return res.json({ response, timestamp: new Date().toISOString() });
   } catch (err: any) {

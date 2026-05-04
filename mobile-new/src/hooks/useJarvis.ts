@@ -178,19 +178,29 @@ export function useJarvis() {
     try {
       const response = await sendMessage(userText, newHistory, userName, level);
 
-      // Strip [YOUTUBE:...] tag for display/speech but keep reference
+      // Strip [YOUTUBE:...] or [YOUTUBE_URL:...] tags
       const youtubeMatch = response.match(/\[YOUTUBE:([^\]]+)\]/);
-      const cleanResponse = response.replace(/\[YOUTUBE:[^\]]+\]/g, '').trim();
+      const youtubeUrlMatch = response.match(/\[YOUTUBE_URL:([^\]]+)\]/);
+      
+      const cleanResponse = response
+        .replace(/\[YOUTUBE:[^\]]+\]/g, '')
+        .replace(/\[YOUTUBE_URL:[^\]]+\]/g, '')
+        .trim();
 
-      setJarvisText(cleanResponse + (youtubeMatch ? `\n\n🎬 YouTube: "${youtubeMatch[1]}"` : ''));
+      setJarvisText(cleanResponse + (youtubeUrlMatch || youtubeMatch ? `\n\n🎬 YouTube Listo` : ''));
 
-      // Si hay una intención de YouTube, la abrimos con un pequeño retraso
-      // para que Jarvis pueda decir "Claro Carlos, ya te lo pongo..."
-      if (youtubeMatch) {
+      // Si tenemos URL directa (del servidor), la abrimos con prioridad
+      if (youtubeUrlMatch) {
+        setTimeout(() => {
+          console.log('[YouTube] Abriendo video directo:', youtubeUrlMatch[1]);
+          Linking.openURL(youtubeUrlMatch[1]);
+        }, 3000);
+      } else if (youtubeMatch) {
+        // Backup: Si el servidor falló la búsqueda, hacemos búsqueda normal
         setTimeout(() => {
           const query = encodeURIComponent(youtubeMatch[1] + ' lyrics');
           Linking.openURL(`https://www.youtube.com/results?search_query=${query}`);
-        }, 3000); // 3 segundos de espera
+        }, 3000);
       }
 
       const fullHistory: Message[] = [
