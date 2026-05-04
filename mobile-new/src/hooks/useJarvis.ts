@@ -112,9 +112,13 @@ export function useJarvis() {
       });
 
       await recorder.prepareToRecordAsync();
+      setJarvisText('Te escucho...');
+      setStatus('listening');
+      
+      // Si Jarvis estaba hablando, lo callamos para escucharte
+      Speech.stop();
       await recorder.record();
       
-      setStatus('listening');
       setTranscript('');
     } catch (err: any) {
       console.error('Start recording error:', err);
@@ -149,14 +153,17 @@ export function useJarvis() {
 
       // Step 2: Chat
       await processMessage(userText);
-      isProcessingRef.current = false;
+      
     } catch (err: any) {
       console.error('Process error:', err);
       setError(err.message ?? 'Error de conexión');
       setStatus('error');
+    } finally {
+      // SIEMPRE liberamos el proceso al final
       isProcessingRef.current = false;
+      if (statusRef.current === 'thinking') setStatus('idle');
     }
-  }, [recorder, history, userName, level]);
+  }, [recorder, history, userName, level, processMessage]);
 
   const processMessage = useCallback(async (userText: string) => {
     setStatus('thinking');
@@ -182,8 +189,8 @@ export function useJarvis() {
       ];
       setHistory(fullHistory);
 
-      // Step 3: Speak
-      await speakResponse(cleanResponse);
+      // Step 3: Speak (SIN AWAIT para no bloquear el micrófono de la siguiente vez)
+      speakResponse(cleanResponse);
     } catch (err: any) {
       setError(err.message);
       setStatus('error');
@@ -230,7 +237,7 @@ export function useJarvis() {
           language: lang,
           voice: voice || undefined,
           pitch: 1.0,
-          rate: 1.05, // Velocidad más natural
+          rate: 1.25, // Voz mucho más rápida y dinámica
           onDone: () => {
             console.log('[Speech] Oración terminada');
             resolve();
