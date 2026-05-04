@@ -191,6 +191,21 @@ export function useJarvis() {
   }, [history, userName, level]);
 
   const speakResponse = async (text: string) => {
+    console.log('[Speech] Preparando audio para hablar...');
+    
+    try {
+      // Forzamos el modo de audio a reproducción pura antes de hablar
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        staysActiveInBackground: false,
+      });
+    } catch (err) {
+      console.warn('[Speech] No se pudo resetear el modo de audio:', err);
+    }
+
     console.log('[Speech] Intentando hablar:', text.substring(0, 30) + '...');
     setStatus('speaking');
     
