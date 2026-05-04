@@ -57,40 +57,39 @@ export function useJarvis() {
   // --- MOTOR DE VOZ AVANZADO (VAD & BARGE-IN) ---
   useEffect(() => {
     if (!recorder.isRecording) return;
-
     const volume = recorder?.metering ?? -100;
     const isJarvisSpeaking = statusRef.current === 'speaking';
 
+    // DEBUG VOLUMEN: Descomenta esto si necesitas calibrar el micro en vivo
+    // console.log(`[VOL] ${volume.toFixed(1)} dB | Status: ${statusRef.current}`);
+
     // 1. LÓGICA DE BARGE-IN (Interrupción)
-    // Si Jarvis habla y detectamos un volumen fuerte (> -28dB suele ser voz humana cercana)
-    // Detenemos a Jarvis inmediatamente para escuchar al usuario.
-    if (isJarvisSpeaking && volume > -30) {
-      console.log('[BARGE-IN] Interrupción detectada. Callando a Jarvis...');
+    // Subimos el umbral de interrupción para que no sea tan sensible al eco
+    if (isJarvisSpeaking && volume > -25) {
+      console.log('[BARGE-IN] Voz fuerte detectada durante TTS. Interrumpiendo...');
       Speech.stop();
       setStatus('listening');
-      // No reseteamos el micro porque ya está abierto (Full Duplex)
     }
 
     // 2. LÓGICA VAD (Detección de Actividad de Voz)
-    if (volume > -40) {
-      // INICIO DE VOZ DETECTADO
-      if (!silenceTimerRef.current) {
-        // console.log('[VAD] Usuario hablando...');
-      }
-      // Si el usuario habla, limpiamos cualquier temporizador de "fin de voz"
+    // Si el volumen es mayor a -35dB, consideramos que hay voz humana
+    if (volume > -35) {
       if (silenceTimerRef.current) {
+        // console.log('[VAD] Voz detectada, reiniciando espera...');
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
       }
     } else {
-      // POSIBLE FIN DE VOZ
-      if (recorder.isRecording && !silenceTimerRef.current && !isJarvisSpeaking && statusRef.current === 'listening') {
-        // console.log('[VAD] Posible fin de voz, esperando confirmación...');
-        silenceTimerRef.current = setTimeout(() => {
-          console.log('[VAD] Fin de voz confirmado. Procesando chunk...');
-          stopRecordingAndProcess();
-          silenceTimerRef.current = null;
-        }, 1200); // 1.2s de silencio para confirmar fin de frase
+      // SILENCIO: Si estamos en modo escucha y no hay voz, iniciamos cuenta regresiva
+      if (recorder.isRecording && !isJarvisSpeaking && statusRef.current === 'listening') {
+        if (!silenceTimerRef.current) {
+          console.log('[VAD] Silencio detectado... esperando confirmación');
+          silenceTimerRef.current = setTimeout(() => {
+            console.log('[VAD] Silencio confirmado, procesando audio');
+            stopRecordingAndProcess();
+            silenceTimerRef.current = null;
+          }, 1000); // 1 segundo de silencio es suficiente
+        }
       }
     }
 
