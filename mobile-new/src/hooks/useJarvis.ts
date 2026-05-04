@@ -17,13 +17,34 @@ export function useJarvis() {
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const isProcessingRef = useRef(false);
+  const voicesRef = useRef<{en: string | null, es: string | null}>({ en: null, es: null });
+  const statusRef = useRef<JarvisStatus>('idle');
 
-  // Load user settings on mount
+  // Update statusRef whenever status changes
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  // Load user settings and voices on mount
   useEffect(() => {
     getUserSettings().then(s => {
       setUserName(s.userName);
       setLevel(s.level);
       setJarvisText(`Hola ${s.userName}, soy Jarvis. Tu profesor de inglés personal. ¿Listo para practicar?`);
+    });
+
+    // Fetch and select best voices
+    Speech.getAvailableVoicesAsync().then(voices => {
+      const enVoice = voices.find(v => v.language.startsWith('en') && (v.quality === 'Enhanced' || v.name.includes('Premium') || v.name.includes('Google'))) || 
+                      voices.find(v => v.language.startsWith('en'));
+      const esVoice = voices.find(v => v.language.startsWith('es') && (v.quality === 'Enhanced' || v.name.includes('Premium') || v.name.includes('Google'))) || 
+                      voices.find(v => v.language.startsWith('es'));
+      
+      voicesRef.current = { 
+        en: enVoice?.identifier || null, 
+        es: esVoice?.identifier || null 
+      };
+      console.log('Selected voices:', voicesRef.current);
     });
   }, []);
 
@@ -133,15 +154,31 @@ export function useJarvis() {
 
   const speakResponse = async (text: string) => {
     setStatus('speaking');
-    return new Promise<void>((resolve) => {
-      Speech.speak(text, {
-        language: 'es-ES',
-        pitch: 1.0,
-        rate: 0.95,
-        onDone: () => { setStatus('idle'); resolve(); },
-        onError: () => { setStatus('idle'); resolve(); },
+    
+    // Split text into sentences to handle bilingual switching
+    const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
+    
+    for (const sentence of sentences) {
+      // Check if we should still be speaking (allow stopSpeaking to interrupt)
+      if (statusRef.current !== 'speaking') break; 
+      
+      const isEnglish = /[a-zA-Z]{4,}/.test(sentence) && !/[áéíóúñ]/i.test(sentence);
+      const voice = isEnglish ? voicesRef.current.en : voicesRef.current.es;
+      const lang = isEnglish ? 'en-US' : 'es-ES';
+
+      await new Promise<void>((resolve) => {
+        Speech.speak(sentence, {
+          language: lang,
+          voice: voice || undefined,
+          pitch: 1.0,
+          rate: 0.9,
+          onDone: () => resolve(),
+          onError: () => resolve(),
+        });
       });
-    });
+    }
+    
+    setStatus('idle');
   };
 
   const sendTextMessage = useCallback(async (text: string) => {
