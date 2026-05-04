@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { Linking } from 'react-native';
 import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
@@ -182,6 +183,11 @@ export function useJarvis() {
       const cleanResponse = response.replace(/\[YOUTUBE:[^\]]+\]/g, '').trim();
 
       setJarvisText(cleanResponse + (youtubeMatch ? `\n\n🎬 YouTube: "${youtubeMatch[1]}"` : ''));
+
+      if (youtubeMatch) {
+        const query = encodeURIComponent(youtubeMatch[1]);
+        Linking.openURL(`https://www.youtube.com/results?search_query=${query}`);
+      }
 
       const fullHistory: Message[] = [
         ...newHistory,
