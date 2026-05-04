@@ -51,8 +51,9 @@ export function useJarvis() {
         es: esVoice?.identifier || null 
       };
       console.log('Selected voices:', voicesRef.current);
-    });
-  }, []  // --- MOTOR DE VOZ INTELIGENTE (AI-POWERED VAD) ---
+  }, []);
+
+  // --- MOTOR DE VOZ INTELIGENTE (AI-POWERED VAD) ---
   const chunksRef = useRef<string[]>([]);
   const consecutiveEmptyRef = useRef(0);
 
