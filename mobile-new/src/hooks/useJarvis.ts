@@ -20,6 +20,7 @@ export function useJarvis() {
   const isProcessingRef = useRef(false);
   const voicesRef = useRef<{en: string | null, es: string | null}>({ en: null, es: null });
   const statusRef = useRef<JarvisStatus>('idle');
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update statusRef whenever status changes
   useEffect(() => {
@@ -49,25 +50,40 @@ export function useJarvis() {
     });
   }, []);
 
-  // Lógica Hands-Free: Auto-detener tras 1.5s de silencio
+  // Lógica Hands-Free: Auto-detener tras 1.5s de silencio real
   useEffect(() => {
-    let silenceTimer: NodeJS.Timeout;
-
     if (status === 'listening' && recorder.isRecording) {
-      // El valor de metering suele ser de -160 (silencio) a 0 (máximo)
-      // Ajustamos el umbral a -45 para detectar silencio ambiental
       if (recorder.metering < -45) {
-        silenceTimer = setTimeout(() => {
-          console.log('Silencio detectado, procesando automáticamente...');
-          stopRecordingAndProcess();
-        }, 1500);
+        // Si no hay temporizador activo, lo iniciamos
+        if (!silenceTimerRef.current) {
+          silenceTimerRef.current = setTimeout(() => {
+            console.log('Silencio detectado por 1.5s, deteniendo...');
+            stopRecordingAndProcess();
+            silenceTimerRef.current = null;
+          }, 1500);
+        }
+      } else {
+        // Si el usuario vuelve a hablar, cancelamos el temporizador
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = null;
+        }
+      }
+    } else {
+      // Limpiar si cambia de estado
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
       }
     }
 
     return () => {
-      if (silenceTimer) clearTimeout(silenceTimer);
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
     };
-  }, [recorder.metering, recorder.isRecording, status]);
+  }, [recorder.metering, recorder.isRecording, status, stopRecordingAndProcess]);
 
   const requestPermissions = async (): Promise<boolean> => {
     // Usamos expo-av para permisos por estabilidad en Expo Go
