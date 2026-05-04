@@ -23,7 +23,7 @@ export async function chatWithJarvis(
   ];
 
   const completion = await groq.chat.completions.create({
-    model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+    model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
     messages,
     temperature: 0.75,
     max_tokens: 512,

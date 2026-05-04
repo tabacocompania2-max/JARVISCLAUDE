@@ -57,10 +57,10 @@ export function useJarvis() {
         // Si no hay temporizador activo, lo iniciamos
         if (!silenceTimerRef.current) {
           silenceTimerRef.current = setTimeout(() => {
-            console.log('Silencio detectado por 1.5s, deteniendo...');
+            console.log('Silencio detectado, enviando...');
             stopRecordingAndProcess();
             silenceTimerRef.current = null;
-          }, 1500);
+          }, 1000); // Reducido de 1500ms a 1000ms
         }
       } else {
         // Si el usuario vuelve a hablar, cancelamos el temporizador
@@ -230,7 +230,7 @@ export function useJarvis() {
           language: lang,
           voice: voice || undefined,
           pitch: 1.0,
-          rate: 0.9,
+          rate: 1.05, // Velocidad más natural
           onDone: () => {
             console.log('[Speech] Oración terminada');
             resolve();
