@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Jarvis",
+    "slug": "jarvis-english-coach",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "jarvis",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#050A14"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#050A14"
+      },
+      "package": "com.jarvis.englishcoach",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET"
+      ]
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.jarvis.englishcoach",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Jarvis necesita el micrófono para escucharte y ayudarte a practicar inglés."
+      }
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Jarvis necesita el micrófono para escucharte."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
