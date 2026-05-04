@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
+import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import { sendMessage, transcribeAudioFile, Message } from '../services/api';
 import { getUserSettings } from '../services/storage';
@@ -49,7 +50,8 @@ export function useJarvis() {
   }, []);
 
   const requestPermissions = async (): Promise<boolean> => {
-    const { status: audioStatus } = await AudioModule.requestPermissionsAsync();
+    // Usamos expo-av para permisos por estabilidad en Expo Go
+    const { status: audioStatus } = await Audio.requestPermissionsAsync();
     return audioStatus === 'granted';
   };
 
