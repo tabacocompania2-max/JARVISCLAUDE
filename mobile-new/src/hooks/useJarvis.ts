@@ -51,6 +51,7 @@ export function useJarvis() {
         es: esVoice?.identifier || null 
       };
       console.log('Selected voices:', voicesRef.current);
+    });
   }, []);
 
   // --- MOTOR DE VOZ INTELIGENTE (AI-POWERED VAD) ---
