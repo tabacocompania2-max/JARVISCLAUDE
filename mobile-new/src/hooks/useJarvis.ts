@@ -54,26 +54,43 @@ export function useJarvis() {
     });
   }, []);
 
-  // Lógica Hands-Free: Auto-detener tras 1.0s de silencio real
+  // --- MOTOR DE VOZ AVANZADO (VAD & BARGE-IN) ---
   useEffect(() => {
     if (!recorder.isRecording) return;
 
     const volume = recorder?.metering ?? -100;
-    
-    // Umbral ligeramente más alto para ignorar ruido de fondo leve
-    if (volume > -42) { 
+    const isJarvisSpeaking = statusRef.current === 'speaking';
+
+    // 1. LÓGICA DE BARGE-IN (Interrupción)
+    // Si Jarvis habla y detectamos un volumen fuerte (> -28dB suele ser voz humana cercana)
+    // Detenemos a Jarvis inmediatamente para escuchar al usuario.
+    if (isJarvisSpeaking && volume > -30) {
+      console.log('[BARGE-IN] Interrupción detectada. Callando a Jarvis...');
+      Speech.stop();
+      setStatus('listening');
+      // No reseteamos el micro porque ya está abierto (Full Duplex)
+    }
+
+    // 2. LÓGICA VAD (Detección de Actividad de Voz)
+    if (volume > -40) {
+      // INICIO DE VOZ DETECTADO
+      if (!silenceTimerRef.current) {
+        // console.log('[VAD] Usuario hablando...');
+      }
+      // Si el usuario habla, limpiamos cualquier temporizador de "fin de voz"
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
       }
     } else {
-      // Silencio: esperar 1 segundo antes de enviar
-      if (!silenceTimerRef.current) {
+      // POSIBLE FIN DE VOZ
+      if (recorder.isRecording && !silenceTimerRef.current && !isJarvisSpeaking && statusRef.current === 'listening') {
+        // console.log('[VAD] Posible fin de voz, esperando confirmación...');
         silenceTimerRef.current = setTimeout(() => {
-          console.log('[Hands-Free] Silencio estable, procesando...');
+          console.log('[VAD] Fin de voz confirmado. Procesando chunk...');
           stopRecordingAndProcess();
           silenceTimerRef.current = null;
-        }, 1000);
+        }, 1200); // 1.2s de silencio para confirmar fin de frase
       }
     }
 
@@ -92,6 +109,7 @@ export function useJarvis() {
 
   const startRecording = useCallback(async () => {
     try {
+      console.log('[MIC] Abriendo canal continuo...');
       setError(null);
       const hasPermission = await requestPermissions();
       if (!hasPermission) {
@@ -99,76 +117,72 @@ export function useJarvis() {
         return;
       }
 
-      await Speech.stop(); // Callamos a Jarvis si estaba hablando
-
+      // Configuración de Audio para FULL DUPLEX y AEC (Acoustic Echo Cancellation)
       await AudioModule.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
-        interruptionModeIOS: 'doNotMix',
+        interruptionModeIOS: 'doNotMix', // Evita que el sistema pause el micro al sonar TTS
         shouldRouteThroughEarpieceAndroid: false,
       });
 
       await recorder.prepareToRecordAsync();
-      setJarvisText('Te escucho...');
-      setStatus('listening');
       await recorder.record();
       
+      setStatus('listening');
       setTranscript('');
+      console.log('[VAD] Modo escucha activa (Hands-free)');
     } catch (err: any) {
-      console.error('Start recording error:', err);
-      setError('Error al iniciar micro');
+      console.error('[MIC ERROR]', err);
+      setError('Error en motor de audio');
       setStatus('error');
     }
   }, [recorder]);
 
   const stopRecordingAndProcess = useCallback(async () => {
-    if (!recorder.isRecording || isProcessingRef.current) {
-      console.log('[Hands-Free] Ignorando trigger (ya procesando o no grabando)');
-      return;
-    }
+    // Si ya estamos procesando un chunk, ignoramos triggers nuevos para evitar colisiones
+    if (isProcessingRef.current) return;
 
     try {
       isProcessingRef.current = true;
-      setStatus('thinking');
+      console.log('[STT] Enviando chunk a Groq...');
 
       await recorder.stop();
       const uri = recorder.uri;
 
-      if (!uri) throw new Error('Audio no capturado');
-
-      // Reiniciamos el micro casi de inmediato para no perder el siguiente fragmento
+      // REINICIO ULTRA-RÁPIDO (Casi continuo)
+      // Reiniciamos antes de procesar el texto para no perder lo que el usuario diga después
       setTimeout(() => {
         if (statusRef.current !== 'error') startRecording();
-      }, 400);
+      }, 100);
 
-      const userText = await transcribeAudioFile(uri);
-      if (!userText.trim()) {
-        console.log('[Audio] Sin contenido audible');
+      if (!uri) {
         isProcessingRef.current = false;
-        setStatus('listening');
         return;
       }
-      setTranscript(userText);
 
-      // Step 2: Chat
+      const userText = await transcribeAudioFile(uri);
+      console.log(`[STT] Recibido: "${userText}"`);
+
+      if (!userText.trim()) {
+        isProcessingRef.current = false;
+        // El micro ya se reinició arriba
+        return;
+      }
+
+      setTranscript(userText);
       await processMessage(userText);
       
     } catch (err: any) {
-      console.error('Process error:', err);
-      setError(err.message ?? 'Error de conexión');
-      setStatus('error');
-    } finally {
-      // SIEMPRE liberamos el proceso al final
+      console.error('[PROCESS ERROR]', err);
       isProcessingRef.current = false;
-      if (statusRef.current === 'thinking') setStatus('idle');
-      
-      // MODO CONTINUO: Si no hubo error y el estado no es idle, reiniciamos el micro tras un breve delay
-      // Pero primero esperamos a que termine de hablar (esto se maneja en speakResponse)
+    } finally {
+      isProcessingRef.current = false;
     }
   }, [recorder, history, userName, level, processMessage, startRecording]);
 
   const processMessage = useCallback(async (userText: string) => {
     setStatus('thinking');
+    console.log('[LLM] Generando respuesta...');
 
     const newHistory: Message[] = [
       ...history,
@@ -179,44 +193,26 @@ export function useJarvis() {
     try {
       const response = await sendMessage(userText, newHistory, userName, level);
       
-      // Si la respuesta es vacía (filtro anti-eco), no hacemos nada
       if (!response.trim()) {
-        console.log('[Anti-Echo] Respuesta filtrada por el servidor');
+        console.log('[ANTI-ECHO] Ignorado por redundancia');
+        setStatus('listening');
         return;
       }
 
-      // Strip [YOUTUBE:...] or [YOUTUBE_URL:...] tags
-      const youtubeMatch = response.match(/\[YOUTUBE:([^\]]+)\]/);
-      const youtubeUrlMatch = response.match(/\[YOUTUBE_URL:([^\]]+)\]/);
-      
       const cleanResponse = response
         .replace(/\[YOUTUBE:[^\]]+\]/g, '')
         .replace(/\[YOUTUBE_URL:[^\]]+\]/g, '')
         .trim();
 
-      setJarvisText(cleanResponse + (youtubeUrlMatch || youtubeMatch ? `\n\n🎬 YouTube Listo` : ''));
-
-      // Si tenemos URL directa (del servidor), la abrimos con prioridad
-      if (youtubeUrlMatch) {
-        setTimeout(() => {
-          console.log('[YouTube] Abriendo video directo:', youtubeUrlMatch[1]);
-          Linking.openURL(youtubeUrlMatch[1]);
-        }, 3000);
-      } else if (youtubeMatch) {
-        // Backup: Si el servidor falló la búsqueda, hacemos búsqueda normal
-        setTimeout(() => {
-          const query = encodeURIComponent(youtubeMatch[1] + ' lyrics');
-          Linking.openURL(`https://www.youtube.com/results?search_query=${query}`);
-        }, 3000);
-      }
-
+      setJarvisText(cleanResponse);
+      
       const fullHistory: Message[] = [
         ...newHistory,
         { role: 'assistant', content: response, timestamp: new Date().toISOString() },
       ];
       setHistory(fullHistory);
 
-      // Step 3: Speak (SIN AWAIT para no bloquear el micrófono de la siguiente vez)
+      // Hablar (TTS)
       speakResponse(cleanResponse);
     } catch (err: any) {
       setError(err.message);
@@ -225,10 +221,11 @@ export function useJarvis() {
   }, [history, userName, level]);
 
   const speakResponse = async (text: string) => {
-    console.log('[Speech] Preparando audio para hablar...');
+    console.log('[TTS] Iniciando reproducción...');
+    setStatus('speaking');
     
+    // Mantenemos el micrófono abierto incluso mientras hablamos para permitir interrupciones
     try {
-      // Mantenemos el micrófono abierto incluso mientras hablamos para permitir interrupciones
       await AudioModule.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -236,13 +233,9 @@ export function useJarvis() {
         shouldRouteThroughEarpieceAndroid: false,
       });
     } catch (err) {
-      console.warn('[Speech] No se pudo configurar modo dual:', err);
+      console.warn('[TTS] Error configurando modo dual:', err);
     }
 
-    console.log('[Speech] Intentando hablar:', text.substring(0, 30) + '...');
-    setStatus('speaking');
-    statusRef.current = 'speaking'; // Forzamos la actualización inmediata del ref
-    
     // Split text into sentences to handle bilingual switching
     const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
     
