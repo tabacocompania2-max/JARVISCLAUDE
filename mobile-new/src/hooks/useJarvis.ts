@@ -54,32 +54,52 @@ export function useJarvis() {
     });
   }, []);
 
-  // --- MOTOR DE VOZ INTELIGENTE (AI-POWERED VAD) ---
-  const chunksRef = useRef<string[]>([]);
-  const consecutiveEmptyRef = useRef(0);
+  // --- MOTOR DE VOZ PROFESIONAL (VAD STATE MACHINE) ---
+  const lastVoiceTimeRef = useRef<number>(0);
+  const isSpeakingRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!recorder.isRecording) return;
 
     const volume = recorder?.metering ?? -100;
     const isJarvisSpeaking = statusRef.current === 'speaking';
+    const now = Date.now();
 
-    // Barge-in (Interrupción) sigue siendo por volumen para respuesta instantánea
-    if (isJarvisSpeaking && volume > -22) {
-      console.log('[BARGE-IN] Interrupción detectada');
+    // 1. BARGE-IN (Interrupción Instantánea)
+    if (isJarvisSpeaking && volume > -25) {
+      console.log('[VAD] Interrupción detectada');
       Speech.stop();
       setStatus('listening');
+      return;
     }
 
-    // Ya no usamos un timer de silencio basado en dB para enviar.
-    // En su lugar, usamos un "Heartbeat" de 2.5 segundos para enviar audio a la IA
-    // y que ella decida si hay voz o no.
-    if (recorder.isRecording && !isJarvisSpeaking && statusRef.current === 'listening') {
-      if (!silenceTimerRef.current) {
-        silenceTimerRef.current = setTimeout(() => {
-          stopRecordingAndProcess();
-          silenceTimerRef.current = null;
-        }, 2500); // Pulso de 2.5s
+    // 2. DETECCIÓN DE ACTIVIDAD (VAD)
+    if (volume > -35) {
+      // El usuario está hablando
+      if (!isSpeakingRef.current) {
+        console.log('[VAD] Inicio de voz...');
+        isSpeakingRef.current = true;
+      }
+      lastVoiceTimeRef.current = now;
+
+      // Si había un temporizador de silencio, lo matamos porque el usuario sigue hablando
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+    } else {
+      // Silencio detectado: si el usuario estaba hablando, esperamos a que termine
+      if (isSpeakingRef.current && !isJarvisSpeaking && statusRef.current === 'listening') {
+        const timeSinceLastVoice = now - lastVoiceTimeRef.current;
+        
+        if (!silenceTimerRef.current) {
+          silenceTimerRef.current = setTimeout(() => {
+            console.log('[VAD] Fin de frase detectado por silencio');
+            isSpeakingRef.current = false;
+            stopRecordingAndProcess();
+            silenceTimerRef.current = null;
+          }, 1200); // 1.2s de silencio tras hablar es el estándar de oro
+        }
       }
     }
 
@@ -98,29 +118,22 @@ export function useJarvis() {
 
   const startRecording = useCallback(async () => {
     try {
-      setError(null);
       const hasPermission = await requestPermissions();
-      if (!hasPermission) {
-        setError('Permiso denegado');
-        return;
-      }
+      if (!hasPermission) return;
 
-      // CONFIGURACIÓN NIVEL CHATGPT: voiceChat activa AEC y aislamiento de voz por hardware
+      // Modo de Audio Optimizado (Hardware AEC)
       await AudioModule.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
         interruptionModeIOS: 'doNotMix',
         shouldRouteThroughEarpieceAndroid: false,
-        // En iOS, el modo 'voiceChat' es vital para la inteligencia del micro
       });
 
       await recorder.prepareToRecordAsync();
       await recorder.record();
-      
       setStatus('listening');
-    } catch (err: any) {
+    } catch (err) {
       console.error('[MIC ERROR]', err);
-      setStatus('error');
     }
   }, [recorder]);
 
@@ -129,54 +142,41 @@ export function useJarvis() {
 
     try {
       isProcessingRef.current = true;
+      setStatus('thinking');
+
       await recorder.stop();
       const uri = recorder.uri;
 
-      // Reinicio ultra-rápido para mantener el canal "abierto"
+      // Reinicio del micro inmediato (Full Duplex)
       setTimeout(() => {
         if (statusRef.current !== 'error') startRecording();
-      }, 30);
+      }, 50);
 
       if (!uri) {
         isProcessingRef.current = false;
+        setStatus('listening');
         return;
       }
 
+      // 3. VALIDACIÓN POR IA (Neuronal VAD)
       const userText = await transcribeAudioFile(uri);
       
-      // Filtro de "Inteligencia": Whisper a veces alucina frases con el ruido
-      const noisePhrases = ['gracias por ver', 'subtítulos', 'revisado por', 'transcription by', 'thank you for watching'];
-      const isNoise = noisePhrases.some(p => userText.toLowerCase().includes(p)) || userText.trim().length <= 1;
+      // Filtramos ruidos y alucinaciones de Whisper
+      const noisePhrases = ['gracias por ver', 'subtítulos', 'revisado por', 'thank you for watching'];
+      const isActuallySpeech = userText.trim().length > 1 && 
+                               !noisePhrases.some(p => userText.toLowerCase().includes(p));
 
-      if (!isNoise) {
-        console.log(`[AI-FOCUS] Voz detectada: "${userText}"`);
-        consecutiveEmptyRef.current = 0;
-        chunksRef.current.push(userText);
-        setTranscript(chunksRef.current.join(' '));
-        
-        // Si detectamos voz, el siguiente pulso será más rápido (agilidad)
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = setTimeout(() => {
-          stopRecordingAndProcess();
-          silenceTimerRef.current = null;
-        }, 1800); // 1.8s mientras detectamos que estás hablando
-        
-        if (userText.includes('.') || userText.includes('?') || userText.length > 60) {
-          const fullMessage = chunksRef.current.join(' ');
-          chunksRef.current = [];
-          await processMessage(fullMessage);
-        }
+      if (isActuallySpeech) {
+        console.log(`[STT] "${userText}"`);
+        setTranscript(userText);
+        await processMessage(userText);
       } else {
-        consecutiveEmptyRef.current++;
-        // Si no hay voz, mantenemos el pulso normal de 2.5s
-        if (consecutiveEmptyRef.current >= 2 && chunksRef.current.length > 0) {
-          const fullMessage = chunksRef.current.join(' ');
-          chunksRef.current = [];
-          await processMessage(fullMessage);
-        }
+        console.log('[VAD] Audio descartado por ser ruido de fondo');
+        setStatus('listening');
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('[STT ERROR]', err);
+      setStatus('listening');
     } finally {
       isProcessingRef.current = false;
     }
