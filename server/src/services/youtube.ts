@@ -1,4 +1,4 @@
-import yts from 'yt-search';
+const yts = require('yt-search');
 
 export async function getFirstYoutubeVideo(query: string): Promise<string | null> {
   try {
