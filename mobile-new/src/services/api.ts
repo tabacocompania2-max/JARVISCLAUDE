@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { FileSystemUploadType } from 'expo-file-system/legacy';
 
-export const API_BASE_URL = 'http://192.168.100.181:3001';
+export const API_BASE_URL = 'https://jarvisclaude-production.up.railway.app';
 
 export interface Message {
   role: 'user' | 'assistant';
