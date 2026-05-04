@@ -208,18 +208,22 @@ export function useJarvis() {
 
     console.log('[Speech] Intentando hablar:', text.substring(0, 30) + '...');
     setStatus('speaking');
+    statusRef.current = 'speaking'; // Forzamos la actualización inmediata del ref
     
     // Split text into sentences to handle bilingual switching
     const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
     
     for (const sentence of sentences) {
-      if (statusRef.current !== 'speaking') break; 
+      if (statusRef.current !== 'speaking') {
+        console.log('[Speech] Interrumpido: el estado ya no es speaking');
+        break; 
+      }
       
       const isEnglish = /[a-zA-Z]{4,}/.test(sentence) && !/[áéíóúñ]/i.test(sentence);
       const voice = isEnglish ? voicesRef.current.en : voicesRef.current.es;
       const lang = isEnglish ? 'en-US' : 'es-ES';
 
-      console.log(`[Speech] Hablando en ${lang} (${isEnglish ? 'EN' : 'ES'})`);
+      console.log(`[Speech] Hablando oración: "${sentence.substring(0, 20)}..." en ${lang}`);
 
       await new Promise<void>((resolve) => {
         Speech.speak(sentence, {
