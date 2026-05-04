@@ -18,7 +18,7 @@ export function JarvisScreen() {
 
   const handleMicPress = () => {
     if (jarvis.isListening) {
-      jarvis.stopRecordingAndProcess();
+      jarvis.stopRecordingAndProcess(true);
     } else if (jarvis.isSpeaking) {
       jarvis.stopSpeaking();
     } else {

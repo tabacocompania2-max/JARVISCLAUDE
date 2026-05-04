@@ -137,7 +137,7 @@ export function useJarvis() {
     }
   }, [recorder]);
 
-  const stopRecordingAndProcess = useCallback(async () => {
+  const stopRecordingAndProcess = useCallback(async (isManual: boolean = false) => {
     if (isProcessingRef.current) return;
 
     try {
@@ -147,9 +147,11 @@ export function useJarvis() {
       await recorder.stop();
       const uri = recorder.uri;
 
-      // Reinicio del micro inmediato (Full Duplex)
+      // Reinicio del micro automático SOLO si no es una parada manual
       setTimeout(() => {
-        if (statusRef.current !== 'error') startRecording();
+        if (!isManual && statusRef.current !== 'error' && statusRef.current !== 'idle') {
+          startRecording();
+        }
       }, 50);
 
       if (!uri) {
@@ -163,7 +165,8 @@ export function useJarvis() {
       
       if (!result.hasVoice) {
         console.log(`[VAD] Ruido detectado (Confianza: ${(result.confidence * 100).toFixed(0)}%). Ignorando.`);
-        setStatus('listening');
+        // Si fue manual, nos quedamos en idle. Si fue automático, volvemos a escuchar.
+        setStatus(isManual ? 'idle' : 'listening');
         return;
       }
 
@@ -172,6 +175,8 @@ export function useJarvis() {
       
       setTranscript(userText);
       await processMessage(userText);
+      
+      // Si fue manual, al terminar de procesar nos quedaremos en lo que decida speakResponse
     } catch (err) {
       console.error('[STT ERROR]', err);
       setStatus('listening');

@@ -1,9 +1,6 @@
 import * as FileSystem from 'expo-file-system';
 
-// ⚙️ CAMBIA ESTA URL POR LA IP DE TU COMPUTADORA
-// Ejemplo: http://192.168.1.5:3001
-// En producción: https://tu-servidor.railway.app
-export const API_BASE_URL = 'http://192.168.100.181:3001';
+export const API_BASE_URL = 'https://jarvisclaude-production.up.railway.app';
 
 export interface Message {
   role: 'user' | 'assistant';
@@ -11,8 +8,11 @@ export interface Message {
   timestamp: string;
 }
 
-export interface ChatResponse {
-  response: string;
+// ✅ NUEVA interface con confianza y detección de voz
+export interface TranscriptionResponse {
+  text: string;
+  confidence: number;
+  hasVoice: boolean; // ← CLAVE: true = voz humana detectada
   timestamp: string;
 }
 
@@ -22,29 +22,23 @@ export async function sendMessage(
   userName: string,
   level: string
 ): Promise<string> {
-  const body = {
-    message,
-    history: history.map(m => ({ role: m.role, content: m.content })),
-    userName,
-    level,
-  };
-
   const res = await fetch(`${API_BASE_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      message,
+      history: history.map(m => ({ role: m.role, content: m.content })),
+      userName,
+      level,
+    }),
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
-  }
-
-  const data: ChatResponse = await res.json();
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
   return data.response;
 }
 
-export async function transcribeAudioFile(audioUri: string): Promise<string> {
+export async function transcribeAudioFileWithVAD(audioUri: string): Promise<TranscriptionResponse> {
   const uploadResult = await FileSystem.uploadAsync(`${API_BASE_URL}/api/transcribe`, audioUri, {
     httpMethod: 'POST',
     uploadType: FileSystem.FileSystemUploadType.MULTIPART,
@@ -57,5 +51,17 @@ export async function transcribeAudioFile(audioUri: string): Promise<string> {
   }
 
   const data = JSON.parse(uploadResult.body);
-  return data.text ?? '';
+
+  return {
+    text: data.text ?? '',
+    confidence: data.confidence ?? 0,
+    hasVoice: data.hasVoice ?? false, // ← Si false = ruido, ignorar
+    timestamp: new Date().toISOString(),
+  };
+}
+
+// ✅ MANTENER función antigua para compatibilidad
+export async function transcribeAudioFile(audioUri: string): Promise<string> {
+  const result = await transcribeAudioFileWithVAD(audioUri);
+  return result.text;
 }

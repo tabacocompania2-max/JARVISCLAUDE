@@ -59,24 +59,31 @@ export async function transcribeAudioWithConfidence(
   const text = (transcription.text || '').trim();
   
   // ✅ EXTRAER confidence: Groq devuelve objeto con datos de confianza
-  // Si no está disponible, calcular basado en longitud del texto
   let confidence = 0.5; // Default
   
-  if (transcription.words) {
-    // Si hay información por palabra, promediar confianzas
+  if (transcription.words && transcription.words.length > 0) {
     const confidences = transcription.words
-      .filter((w: any) => w.confidence)
+      .filter((w: any) => w.confidence !== undefined)
       .map((w: any) => w.confidence);
+    
+    if (confidences.length > 0) {
+      confidence = confidences.reduce((a: number, b: number) => a + b, 0) / confidences.length;
+    }
+  } else if (transcription.segments && transcription.segments.length > 0) {
+    // Fallback a segmentos si no hay palabras
+    const confidences = transcription.segments
+      .filter((s: any) => s.avg_logprob !== undefined)
+      .map((s: any) => Math.exp(s.avg_logprob)); // logprob a confidence 0-1
     
     if (confidences.length > 0) {
       confidence = confidences.reduce((a: number, b: number) => a + b, 0) / confidences.length;
     }
   }
   
-  // ✅ LÓGICA DE DETECCIÓN DE VOZ
-  const hasVoice = text.length > 0 && confidence > 0.5;
+  // ✅ LÓGICA DE DETECCIÓN DE VOZ (Más permisiva: >= 0.4)
+  const hasVoice = text.length > 0 && confidence >= 0.4;
   
-  console.log(`[Whisper] Texto: "${text.substring(0, 30)}..." | Confianza: ${(confidence * 100).toFixed(0)}% | Voz: ${hasVoice}`);
+  console.log(`[VAD] "${text.substring(0, 20)}..." | Confianza: ${(confidence * 100).toFixed(0)}% | Voz: ${hasVoice}`);
   
   return {
     text,
