@@ -191,18 +191,20 @@ export function useJarvis() {
   }, [history, userName, level]);
 
   const speakResponse = async (text: string) => {
+    console.log('[Speech] Intentando hablar:', text.substring(0, 30) + '...');
     setStatus('speaking');
     
     // Split text into sentences to handle bilingual switching
     const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
     
     for (const sentence of sentences) {
-      // Check if we should still be speaking (allow stopSpeaking to interrupt)
       if (statusRef.current !== 'speaking') break; 
       
       const isEnglish = /[a-zA-Z]{4,}/.test(sentence) && !/[áéíóúñ]/i.test(sentence);
       const voice = isEnglish ? voicesRef.current.en : voicesRef.current.es;
       const lang = isEnglish ? 'en-US' : 'es-ES';
+
+      console.log(`[Speech] Hablando en ${lang} (${isEnglish ? 'EN' : 'ES'})`);
 
       await new Promise<void>((resolve) => {
         Speech.speak(sentence, {
@@ -210,8 +212,14 @@ export function useJarvis() {
           voice: voice || undefined,
           pitch: 1.0,
           rate: 0.9,
-          onDone: () => resolve(),
-          onError: () => resolve(),
+          onDone: () => {
+            console.log('[Speech] Oración terminada');
+            resolve();
+          },
+          onError: (e) => {
+            console.error('[Speech] Error al hablar:', e);
+            resolve();
+          },
         });
       });
     }
