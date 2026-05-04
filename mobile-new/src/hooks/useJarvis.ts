@@ -163,8 +163,11 @@ export function useJarvis() {
       // SIEMPRE liberamos el proceso al final
       isProcessingRef.current = false;
       if (statusRef.current === 'thinking') setStatus('idle');
+      
+      // MODO CONTINUO: Si no hubo error y el estado no es idle, reiniciamos el micro tras un breve delay
+      // Pero primero esperamos a que termine de hablar (esto se maneja en speakResponse)
     }
-  }, [recorder, history, userName, level, processMessage]);
+  }, [recorder, history, userName, level, processMessage, startRecording]);
 
   const processMessage = useCallback(async (userText: string) => {
     setStatus('thinking');
@@ -261,6 +264,12 @@ export function useJarvis() {
           onDone: () => {
             console.log('[Speech] Oración terminada');
             resolve();
+            // AUTO-REINICIO: Si estamos en modo manos libres, volvemos a escuchar
+            setTimeout(() => {
+              if (statusRef.current === 'idle' || statusRef.current === 'speaking') {
+                startRecording();
+              }
+            }, 500); // 500ms de gracia entre turnos
           },
           onError: (e) => {
             console.error('[Speech] Error al hablar:', e);
