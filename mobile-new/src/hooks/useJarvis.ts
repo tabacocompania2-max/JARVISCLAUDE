@@ -103,11 +103,13 @@ export function useJarvis() {
         return;
       }
 
+      // CONFIGURACIÓN NIVEL CHATGPT: voiceChat activa AEC y aislamiento de voz por hardware
       await AudioModule.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
         interruptionModeIOS: 'doNotMix',
         shouldRouteThroughEarpieceAndroid: false,
+        // En iOS, el modo 'voiceChat' es vital para la inteligencia del micro
       });
 
       await recorder.prepareToRecordAsync();
@@ -128,37 +130,43 @@ export function useJarvis() {
       await recorder.stop();
       const uri = recorder.uri;
 
-      // Reinicio inmediato del micro (Canal Continuo)
+      // Reinicio ultra-rápido para mantener el canal "abierto"
       setTimeout(() => {
         if (statusRef.current !== 'error') startRecording();
-      }, 50);
+      }, 30);
 
       if (!uri) {
         isProcessingRef.current = false;
         return;
       }
 
-      // Dejamos que la IA (Whisper) decida si esto es voz o ruido
       const userText = await transcribeAudioFile(uri);
       
-      if (userText.trim().length > 1) {
-        console.log(`[AI-VAD] Voz detectada: "${userText}"`);
+      // Filtro de "Inteligencia": Whisper a veces alucina frases con el ruido
+      const noisePhrases = ['gracias por ver', 'subtítulos', 'revisado por', 'transcription by', 'thank you for watching'];
+      const isNoise = noisePhrases.some(p => userText.toLowerCase().includes(p)) || userText.trim().length <= 1;
+
+      if (!isNoise) {
+        console.log(`[AI-FOCUS] Voz detectada: "${userText}"`);
         consecutiveEmptyRef.current = 0;
         chunksRef.current.push(userText);
         setTranscript(chunksRef.current.join(' '));
         
-        // Si la frase parece completa (punto final) o es larga, procesamos con el chat
-        if (userText.includes('.') || userText.includes('?') || userText.length > 50) {
+        // Si detectamos voz, el siguiente pulso será más rápido (agilidad)
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => {
+          stopRecordingAndProcess();
+          silenceTimerRef.current = null;
+        }, 1800); // 1.8s mientras detectamos que estás hablando
+        
+        if (userText.includes('.') || userText.includes('?') || userText.length > 60) {
           const fullMessage = chunksRef.current.join(' ');
           chunksRef.current = [];
           await processMessage(fullMessage);
         }
       } else {
-        // La IA dice que es ruido o silencio
         consecutiveEmptyRef.current++;
-        console.log(`[AI-VAD] Ruido ignorado (${consecutiveEmptyRef.current})`);
-        
-        // Si llevamos 2 pulsos vacíos y hay algo en el buffer, el usuario terminó de hablar
+        // Si no hay voz, mantenemos el pulso normal de 2.5s
         if (consecutiveEmptyRef.current >= 2 && chunksRef.current.length > 0) {
           const fullMessage = chunksRef.current.join(' ');
           chunksRef.current = [];
