@@ -4,13 +4,14 @@ import {
   TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView,
   Animated
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useJarvis } from '../hooks/useJarvis';
 import { JarvisOrb } from '../components/JarvisOrb';
 import { MicButton } from '../components/MicButton';
 import { ConversationHistory } from '../components/ConversationHistory';
 
 export function JarvisScreen() {
+  const insets = useSafeAreaInsets();
   const jarvis = useJarvis();
   const [textInput, setTextInput] = useState('');
   const [showChat, setShowChat] = useState(false);
@@ -97,7 +98,7 @@ export function JarvisScreen() {
         )}
 
         {/* Bottom controls */}
-        <View style={styles.bottomSection}>
+        <View style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 24) }]}>
           {/* Mic button */}
           <MicButton
             isListening={jarvis.isListening}
@@ -240,7 +241,6 @@ const styles = StyleSheet.create({
 
   bottomSection: {
     paddingHorizontal: 24,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 24,
     gap: 20,
     alignItems: 'center',
     borderTopWidth: 1,

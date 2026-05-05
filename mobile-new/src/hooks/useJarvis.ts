@@ -11,10 +11,10 @@ export type JarvisStatus = 'idle' | 'listening' | 'thinking' | 'speaking' | 'err
 export function useJarvis() {
   const [status, setStatus] = useState<JarvisStatus>('idle');
   const [transcript, setTranscript] = useState('');
-  const [jarvisText, setJarvisText] = useState('Hola, soy Jarvis. Tu profesor de inglés personal. ¿Listo para practicar?');
+  const [jarvisText, setJarvisText] = useState('Hola Carlos, soy Jarvis. Tu profesor de inglés personal. ¿Listo para practicar?');
   const [history, setHistory] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [userName, setUserName] = useState('Estudiante');
+  const [userName, setUserName] = useState('Carlos');
   const [level, setLevel] = useState('Beginner');
 
   const recorder = useAudioRecorder({

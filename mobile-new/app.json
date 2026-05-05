@@ -1,12 +1,18 @@
 {
   "expo": {
-    "name": "mobile-new",
+    "name": "Coach de Inglés",
     "slug": "mobile-new",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
+    "updates": {
+      "url": "https://u.expo.dev/af862e77-7824-492e-bdf7-be635bdac950"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -16,18 +22,29 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.negociosdigitales11.jarvis",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-audio"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "af862e77-7824-492e-bdf7-be635bdac950"
+      }
+    },
+    "owner": "negociosdigitales11"
   }
 }
